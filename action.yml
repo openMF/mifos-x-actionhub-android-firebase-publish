@@ -1,0 +1,88 @@
+# Composite action: Deploy Android APK to Firebase App Distribution
+# Patched for fastlane-modernization sub-plan 12:
+#   - AC18: pin firebase_app_distribution to --version=1.0.0
+#   - AC19: SHA-pin ruby/setup-ruby (no floating @v1)
+#   - AC20: rename MATCH_SSH_PRIVATE_KEY → MATCH_GIT_PRIVATE_KEY (N/A here — Android)
+name: 'Deploy Android Firebase App Distribution'
+description: 'Build signed Android APK and deploy to Firebase App Distribution.'
+
+inputs:
+  android_package_name:
+    description: 'Android Gradle module name (e.g. cmp-android)'
+    required: true
+  release_type:
+    description: "Distribution flavor: 'prod' or 'demo'"
+    required: false
+    default: 'prod'
+  keystore_file:
+    description: 'Base64-encoded release keystore'
+    required: true
+  keystore_password:
+    description: 'Keystore password'
+    required: true
+  keystore_alias:
+    description: 'Keystore alias'
+    required: true
+  keystore_alias_password:
+    description: 'Keystore alias password'
+    required: true
+  google_services:
+    description: 'Base64-encoded google-services.json'
+    required: true
+  firebase_creds:
+    description: 'Base64-encoded Firebase service account JSON'
+    required: true
+  tester_groups:
+    description: 'Firebase tester group(s), comma-separated'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Ruby (SHA-pinned — AC19)
+      # Resolve current SHA via `gh api /repos/ruby/setup-ruby/git/refs/tags/v1`
+      # Pin to a frozen 40-char commit SHA, NOT @v1. The comment carries the tag
+      # this SHA corresponds to so future bumps are greppable.
+      uses: ruby/setup-ruby@afeafc3d1ab54a631816aba4c914a0081c12ff2f  # v1.232.0
+      with:
+        bundler-cache: true
+
+    - name: Install Fastlane plugins (pinned — AC18)
+      shell: bash
+      run: |
+        # Pin firebase_app_distribution to the Pluginfile-exact version
+        # bumped in sub-plan 01. Floating add_plugin calls forbidden.
+        fastlane add_plugin firebase_app_distribution --version=1.0.0
+        # NOTE: increment_build_number add_plugin removed (sub-plan 05 dropped
+        # the Fastfile lane that used it).
+
+    - name: Inflate secrets
+      shell: bash
+      env:
+        GOOGLE_SERVICES_B64: ${{ inputs.google_services }}
+        FIREBASE_CREDS_B64: ${{ inputs.firebase_creds }}
+        KEYSTORE_B64: ${{ inputs.keystore_file }}
+      run: |
+        mkdir -p secrets keystores "${{ inputs.android_package_name }}"
+        echo "$GOOGLE_SERVICES_B64" | base64 --decode > "${{ inputs.android_package_name }}/google-services.json"
+        echo "$KEYSTORE_B64" | base64 --decode > keystores/release_keystore.keystore
+        echo "$FIREBASE_CREDS_B64" | base64 --decode > secrets/firebaseAppDistributionServiceCredentialsFile.json
+
+    - name: Deploy to Firebase
+      shell: bash
+      env:
+        FIREBASE_GROUPS: ${{ inputs.tester_groups }}
+      run: |
+        if [ "${{ inputs.release_type }}" = "demo" ]; then
+          bundle exec fastlane android deployDemoApkOnFirebase
+        else
+          bundle exec fastlane android deployReleaseApkOnFirebase
+        fi
+
+    - name: Cleanup secrets
+      shell: bash
+      if: always()
+      run: |
+        rm -f secrets/firebaseAppDistributionServiceCredentialsFile.json
+        rm -f keystores/release_keystore.keystore
+        rm -f "${{ inputs.android_package_name }}/google-services.json"
