@@ -35,6 +35,10 @@ inputs:
   tester_groups:
     description: 'Firebase tester group(s), comma-separated'
     required: true
+  kmp_flavor:
+    description: 'Product flavor to build and distribute (e.g. prod, demo, bankA). Takes precedence over release_type when non-empty.'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -72,12 +76,14 @@ runs:
       shell: bash
       env:
         FIREBASE_GROUPS: ${{ inputs.tester_groups }}
+        KMP_FLAVOR: ${{ inputs.kmp_flavor || inputs.release_type }}
       run: |
-        if [ "${{ inputs.release_type }}" = "demo" ]; then
-          bundle exec fastlane android deployDemoApkOnFirebase
-        else
-          bundle exec fastlane android deployReleaseApkOnFirebase
+        # Use kmp_flavor when provided; fall back to release_type for backward compat.
+        FLAVOR="${{ inputs.kmp_flavor }}"
+        if [ -z "$FLAVOR" ]; then
+          FLAVOR="${{ inputs.release_type }}"
         fi
+        bundle exec fastlane android deployApkOnFirebase kmp_flavor:"$FLAVOR"
 
     - name: Cleanup secrets
       shell: bash
