@@ -43,7 +43,7 @@ runs:
       # Resolve current SHA via `gh api /repos/ruby/setup-ruby/git/refs/tags/v1`
       # Pin to a frozen 40-char commit SHA, NOT @v1. The comment carries the tag
       # this SHA corresponds to so future bumps are greppable.
-      uses: ruby/setup-ruby@afeafc3d1ab54a631816aba4c914a0081c12ff2f  # v1.232.0
+      uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b  # v1.232.0
       with:
         bundler-cache: true
 
